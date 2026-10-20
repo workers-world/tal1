@@ -1,10 +1,10 @@
 # Release PR CI 模板（复制到 Worker 根目录 .github/workflows/ci.yml）
 # 说明见 docs/release-pr-ci.md；编排：worker-ci.yml
-# workers-world actions bundle: actions/v0.2.34（禁止 @master，见 docs/actions-releases.md）
+# workers-world actions bundle: actions/v0.2.40（禁止 @master，见 docs/actions-releases.md）
 # 另复制 templates/sync-default-branch.yml 为独立 workflow（勿并入本文件）
 name: CI
 
-# Release PR 模型：push dev_* → verify + 自动开 PR；PR → master 上跑 qodana + OCR，全绿 auto-merge。
+# Release PR 模型：push dev_* → verify + 自动开 PR；PR → master 上跑 qodana，全绿 auto-merge。
 # 前置：Org Secret GHA_TOKEN（PAT repo）；caller 显式传递 secrets（见下方 secrets 块）
 on:
   push:
@@ -24,20 +24,16 @@ jobs:
       packages: read
       pull-requests: write
       issues: write
-      # nested worker-ci → qodana/ocr 需 actions: write（cache）；notify-blocked 需 actions/checks: read
+      # nested worker-ci → qodana 需 actions: write（cache）；notify-blocked 需 actions/checks: read
       actions: write
       checks: read
-    uses: workers-world/worker-actions/.github/workflows/worker-ci.yml@actions/v0.2.34
+    uses: workers-world/worker-actions/.github/workflows/worker-ci.yml@actions/v0.2.40
     secrets:
       GHA_TOKEN: ${{ secrets.GHA_TOKEN }}
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
       RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
       QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
-      OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_TOKEN }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-      OCR_LLM_URL: ${{ secrets.OCR_LLM_URL }}
-      OCR_LLM_MODEL: ${{ secrets.OCR_LLM_MODEL }}
-      OCR_LLM_EXTRA_HEADERS: ${{ secrets.OCR_LLM_EXTRA_HEADERS }}
       NOTIFY_GHA_TOKEN: ${{ secrets.NOTIFY_GHA_TOKEN }}
     with:
       materialize_sdk: false
