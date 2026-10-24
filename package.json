@@ -13,7 +13,7 @@
         "format": "npx --yes @biomejs/biome@2.5.1 format --write src"
     },
     "dependencies": {
-        "framework_sdk_worker": "npm:@workers-world/framework_sdk_worker@0.4.42"
+        "framework_sdk_worker": "npm:@workers-world/framework_sdk_worker@0.4.43"
     },
     "devDependencies": {
         "@cloudflare/workers-types": "5.20261012.1",

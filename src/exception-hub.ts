@@ -3,9 +3,9 @@
  * AE invocation_slo 仍由 trace-to-point 写入，本模块不碰 stack→AE。
  */
 import {
-    buildOpsErrorIntake,
     type IntakeEnv,
-    submitIntakeEventAsync,
+    intakePlatformAssembleUncaughtException,
+    intakePublishAsync,
 } from 'framework_sdk_worker/intake';
 import { pathPrefix, TAIL_SCRIPT_NAME, type TraceLike } from './trace-to-point.js';
 
@@ -49,8 +49,28 @@ export interface ExceptionLogPayload {
 
 export interface ExceptionHubResult {
     log: ExceptionLogPayload | null;
-    /** 仅未捕获异常时有值；调用方再 submitIntake */
-    intake: ReturnType<typeof buildOpsErrorIntake> | null;
+    /** 仅未捕获异常时有值；调用方再 intakePublish */
+    intake: ReturnType<typeof intakePlatformAssembleUncaughtException> | null;
+}
+
+/** Tail TraceItem 上尝试读取的平台 hop（字段因 workerd 版本而异，fail-open） */
+function resolveTailHop(event: TraceExceptionEvent): { requestId?: string; note?: string } {
+    const record = event as TraceExceptionEvent & {
+        diagnosticsChannelId?: string;
+        rayId?: string;
+        requestId?: string;
+        invocationId?: string;
+    };
+    const requestId =
+        record.invocationId?.trim() ||
+        record.requestId?.trim() ||
+        record.diagnosticsChannelId?.trim() ||
+        record.rayId?.trim() ||
+        undefined;
+    if (requestId) {
+        return { requestId };
+    }
+    return { note: 'tal1-tail: TraceItem 无 requestId/invocationId（平台字段未暴露）' };
 }
 
 function collectErrorInfo(logs: TraceLogLike[] | null | undefined): TraceErrorInfoLike[] {
@@ -131,11 +151,17 @@ export function analyzeExceptionEvent(event: TraceExceptionEvent): ExceptionHubR
     const error = formatExceptionShort(primary);
     const stack = exceptions.length > 0 ? joinStacks(exceptions) : error;
 
-    const intake = buildOpsErrorIntake({
+    const hop = resolveTailHop(event);
+    const intake = intakePlatformAssembleUncaughtException({
         producer: TAIL_SCRIPT_NAME,
         worker: scriptName,
-        reason: UNCAUGHT_REASON,
         error,
+        hop: {
+            ...(hop.requestId ? { requestId: hop.requestId, invocationId: hop.requestId } : {}),
+            ...(hop.note ? { note: hop.note } : {}),
+            scriptName,
+        },
+        requestId: hop.requestId,
         context: {
             stack,
             path,
@@ -162,7 +188,7 @@ export function recordExceptionHub(
             logged += 1;
         }
         if (intake) {
-            submitIntakeEventAsync(env, intake, ctx);
+            intakePublishAsync(env, intake, { ctx, channel: 'platform' });
             intakeSubmitted += 1;
         }
     }
