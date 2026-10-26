@@ -1,6 +1,7 @@
 name = "tal1"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
+compatibility_flags = ["new_module_registry"]
 workers_dev = false
 
 # Central tail portal — producers use [[tail_consumers]] service = "tal1".
