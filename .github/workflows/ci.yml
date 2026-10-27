@@ -1,6 +1,6 @@
 # Release PR CI 模板（复制到 Worker 根目录 .github/workflows/ci.yml）
 # 说明见 docs/release-pr-ci.md；编排：worker-ci.yml
-# workers-world actions bundle: actions/v0.2.40（禁止 @master，见 docs/actions-releases.md）
+# workers-world actions bundle: actions/v0.2.41（禁止 @master，见 docs/actions-releases.md）
 # 另复制 templates/sync-default-branch.yml 为独立 workflow（勿并入本文件）
 name: CI
 
@@ -27,13 +27,12 @@ jobs:
       # nested worker-ci → qodana 需 actions: write（cache）；notify-blocked 需 actions/checks: read
       actions: write
       checks: read
-    uses: workers-world/worker-actions/.github/workflows/worker-ci.yml@actions/v0.2.40
+    uses: workers-world/worker-actions/.github/workflows/worker-ci.yml@actions/v0.2.45
     secrets:
       GHA_TOKEN: ${{ secrets.GHA_TOKEN }}
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
       RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
       QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
-      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       NOTIFY_GHA_TOKEN: ${{ secrets.NOTIFY_GHA_TOKEN }}
     with:
       materialize_sdk: false
