@@ -2,9 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 import type { IntakeEnv } from 'framework_sdk_worker/intake';
 import {
     analyzeExceptionEvent,
+    classifyPlatformTransient,
+    EXCEPTION_LOG_MSG,
+    PLATFORM_TRANSIENT_LOG_MSG,
     recordExceptionHub,
     UNCAUGHT_REASON,
 } from '../src/exception-hub.js';
+
+const CONTAINER_UNAVAILABLE =
+    'There is no container instance that can be provided to this Durable Object, try again later';
 
 describe('analyzeExceptionEvent', () => {
     it('skips tal1 self and empty script', () => {
@@ -32,11 +38,12 @@ describe('analyzeExceptionEvent', () => {
             ],
         });
         expect(log).toMatchObject({
-            msg: 'tal1_exception',
+            msg: EXCEPTION_LOG_MSG,
             scriptName: 'notify-worker',
             outcome: 'exception',
             path: '/v1/send',
         });
+        expect(log?.platformReason).toBeUndefined();
         expect(log?.exceptions?.[0]?.stack).toContain('src/down.ts:30:8');
         expect(intake).not.toBeNull();
         expect(intake?.kind).toBe('ops.error');
@@ -87,6 +94,79 @@ describe('analyzeExceptionEvent', () => {
         });
         expect(again.intake?.summary).toContain('boom');
     });
+
+    it('classifies CF container-unavailable as platform transient: warn log, no intake', () => {
+        const canceled = analyzeExceptionEvent({
+            scriptName: 'fund-info-worker',
+            outcome: 'canceled',
+            event: { request: { method: 'GET', url: 'https://api.example.com/api/v1/funds' } },
+            scriptVersion: { id: '2c440105-e6f6-4556-bb50-0d3913ede2d1' },
+            exceptions: [{ name: 'Error', message: CONTAINER_UNAVAILABLE, timestamp: 1793881371053 }],
+        });
+        expect(canceled.log).toMatchObject({
+            msg: PLATFORM_TRANSIENT_LOG_MSG,
+            scriptName: 'fund-info-worker',
+            outcome: 'canceled',
+            path: '/api/v1',
+            platformReason: 'container_unavailable',
+        });
+        expect(canceled.intake).toBeNull();
+
+        const okOutcome = analyzeExceptionEvent({
+            scriptName: 'fund-info-worker',
+            outcome: 'ok',
+            exceptions: [{ name: 'Error', message: CONTAINER_UNAVAILABLE }],
+        });
+        expect(okOutcome.log?.msg).toBe(PLATFORM_TRANSIENT_LOG_MSG);
+        expect(okOutcome.log?.platformReason).toBe('container_unavailable');
+        expect(okOutcome.intake).toBeNull();
+    });
+
+    it('does not hide a real crash mixed with a platform transient', () => {
+        const { log, intake } = analyzeExceptionEvent({
+            scriptName: 'fund-info-worker',
+            outcome: 'exception',
+            exceptions: [
+                { name: 'Error', message: CONTAINER_UNAVAILABLE },
+                { name: 'TypeError', message: 'x is not a function' },
+            ],
+        });
+        expect(log?.msg).toBe(EXCEPTION_LOG_MSG);
+        expect(log?.platformReason).toBeUndefined();
+        expect(intake).not.toBeNull();
+        expect(intake?.title).toContain(UNCAUGHT_REASON);
+    });
+});
+
+describe('classifyPlatformTransient', () => {
+    it('matches known CF retryable platform messages', () => {
+        expect(
+            classifyPlatformTransient([{ message: CONTAINER_UNAVAILABLE }]),
+        ).toBe('container_unavailable');
+        expect(
+            classifyPlatformTransient([
+                {
+                    message:
+                        'Maximum number of running container instances exceeded. Try again later, or try configuring a higher value for max_instances',
+                },
+            ]),
+        ).toBe('container_max_instances');
+        expect(
+            classifyPlatformTransient([
+                { message: 'Durable Object is overloaded. Too many requests queued.' },
+            ]),
+        ).toBe('durable_object_overloaded');
+        expect(
+            classifyPlatformTransient([
+                {
+                    message:
+                        'Your account is generating too much load on Durable Objects. Please back off and try again later.',
+                },
+            ]),
+        ).toBe('durable_object_account_load');
+        expect(classifyPlatformTransient([{ message: 'x is not a function' }])).toBeNull();
+        expect(classifyPlatformTransient([])).toBeNull();
+    });
 });
 
 describe('recordExceptionHub', () => {
@@ -111,10 +191,42 @@ describe('recordExceptionHub', () => {
         expect(result).toEqual({ logged: 1, intakeSubmitted: 1 });
         expect(error).toHaveBeenCalledOnce();
         expect(JSON.parse(String(error.mock.calls[0]?.[0]))).toMatchObject({
-            msg: 'tal1_exception',
+            msg: EXCEPTION_LOG_MSG,
             scriptName: 'llm-gateway-worker',
         });
         expect(waitUntil).toHaveBeenCalled();
         error.mockRestore();
+    });
+
+    it('console.warn JSON and skips intake for container-unavailable', () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const waitUntil = vi.fn();
+        const env = {
+            SVC_SCH1: { fetch: vi.fn(async () => new Response('{}', { status: 200 })) },
+            SCH_INTAKE_TOKEN: 'test-token',
+        } as unknown as IntakeEnv;
+        const result = recordExceptionHub(
+            [
+                {
+                    scriptName: 'fund-info-worker',
+                    outcome: 'canceled',
+                    exceptions: [{ name: 'Error', message: CONTAINER_UNAVAILABLE }],
+                },
+            ],
+            env,
+            { waitUntil },
+        );
+        expect(result).toEqual({ logged: 1, intakeSubmitted: 0 });
+        expect(error).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledOnce();
+        expect(JSON.parse(String(warn.mock.calls[0]?.[0]))).toMatchObject({
+            msg: PLATFORM_TRANSIENT_LOG_MSG,
+            platformReason: 'container_unavailable',
+            scriptName: 'fund-info-worker',
+        });
+        expect(waitUntil).not.toHaveBeenCalled();
+        error.mockRestore();
+        warn.mockRestore();
     });
 });

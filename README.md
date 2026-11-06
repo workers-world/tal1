@@ -42,7 +42,8 @@ After each producer invocation, TAL1 writes **one** data point:
 
 | Signal | tal1 Workers Logs | sch1 Intake |
 |--------|-------------------|-------------|
-| Uncaught `exceptions[]` (remap after `upload_source_maps`) | JSON `msg=tal1_exception` | `ops.error` / `reason=uncaught_exception`（按日去重；**不发邮件**） |
+| Uncaught `exceptions[]` (remap after `upload_source_maps`) | JSON `msg=tal1_exception` (`console.error`) | `ops.error` / `reason=uncaught_exception`（按日去重；**不发邮件**） |
+| Known CF platform transients (container unavailable, DO overloaded, …) | JSON `msg=tal1_platform_transient` (`console.warn`) | **否**（可重试的平台供给/过载，避免 `telemetry_error_burst`） |
 | Caught `logs[].errorInfo` | same JSON with `errorInfo` | **否**（避免与业务 `reportOpsError` 重复） |
 
 Requires `SVC_SCH1` + `SCH_INTAKE_TOKEN`（Secrets Store）。Missing bindings → intake warn, tail still succeeds.
