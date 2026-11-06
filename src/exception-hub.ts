@@ -1,5 +1,6 @@
 /**
  * Tail TraceItem → 结构化异常日志 + sch1 ops.error Intake（仅未捕获）。
+ * 已知可重试的 CF 平台瞬时错误（容器供给 / DO 过载）只 warn，不进 Intake。
  * AE invocation_slo 仍由 trace-to-point 写入，本模块不碰 stack→AE。
  */
 import {
@@ -10,6 +11,15 @@ import {
 import { pathPrefix, TAIL_SCRIPT_NAME, type TraceLike } from './trace-to-point.js';
 
 export const UNCAUGHT_REASON = 'uncaught_exception';
+export const EXCEPTION_LOG_MSG = 'tal1_exception';
+export const PLATFORM_TRANSIENT_LOG_MSG = 'tal1_platform_transient';
+
+/** Cloudflare Containers / Durable Objects 可重试平台错误（非应用崩溃） */
+export type PlatformTransientReason =
+    | 'container_unavailable'
+    | 'container_max_instances'
+    | 'durable_object_overloaded'
+    | 'durable_object_account_load';
 
 export interface TraceExceptionLike {
     name?: string;
@@ -38,13 +48,15 @@ export interface TraceExceptionEvent extends TraceLike {
 }
 
 export interface ExceptionLogPayload {
-    msg: 'tal1_exception';
+    msg: typeof EXCEPTION_LOG_MSG | typeof PLATFORM_TRANSIENT_LOG_MSG;
     scriptName: string;
     outcome: string;
     path: string;
     scriptVersion?: { id?: string; message?: string; tag?: string };
     exceptions?: TraceExceptionLike[];
     errorInfo?: TraceErrorInfoLike[];
+    /** 仅平台瞬时错误：CF 容器供给 / DO 过载等 */
+    platformReason?: PlatformTransientReason;
 }
 
 export interface ExceptionHubResult {
@@ -96,6 +108,54 @@ function collectErrorInfo(logs: TraceLogLike[] | null | undefined): TraceErrorIn
     return out;
 }
 
+function matchPlatformTransient(message: string): PlatformTransientReason | null {
+    const m = message.toLowerCase();
+    if (m.includes('there is no container instance that can be provided to this durable object')) {
+        return 'container_unavailable';
+    }
+    if (m.includes('maximum number of running container instances exceeded')) {
+        return 'container_max_instances';
+    }
+    if (m.includes('durable object is overloaded')) {
+        return 'durable_object_overloaded';
+    }
+    if (m.includes('generating too much load on durable objects')) {
+        return 'durable_object_account_load';
+    }
+    return null;
+}
+
+/**
+ * 全部 exception / errorInfo 消息都是已知平台瞬时错误时才分类；
+ * 夹杂真实应用异常则返回 null，避免把崩溃藏进 warn。
+ */
+export function classifyPlatformTransient(
+    exceptions: readonly TraceExceptionLike[],
+    errorInfo: readonly TraceErrorInfoLike[] = [],
+): PlatformTransientReason | null {
+    const messages: string[] = [];
+    for (const item of [...exceptions, ...errorInfo]) {
+        const message = String(item.message ?? '').trim();
+        if (message) {
+            messages.push(message);
+        }
+    }
+    if (messages.length === 0) {
+        return null;
+    }
+    let reason: PlatformTransientReason | null = null;
+    for (const message of messages) {
+        const matched = matchPlatformTransient(message);
+        if (!matched) {
+            return null;
+        }
+        if (reason == null) {
+            reason = matched;
+        }
+    }
+    return reason;
+}
+
 function formatExceptionShort(ex: TraceExceptionLike): string {
     const name = String(ex.name ?? 'Error').trim() || 'Error';
     const message = String(ex.message ?? '').trim();
@@ -132,15 +192,22 @@ export function analyzeExceptionEvent(event: TraceExceptionEvent): ExceptionHubR
 
     const outcome = String(event.outcome ?? 'unknown');
     const path = pathPrefix(event.event?.request?.url);
+    const platformReason = classifyPlatformTransient(exceptions, errorInfo);
     const log: ExceptionLogPayload = {
-        msg: 'tal1_exception',
+        msg: platformReason ? PLATFORM_TRANSIENT_LOG_MSG : EXCEPTION_LOG_MSG,
         scriptName,
         outcome,
         path,
         ...(event.scriptVersion ? { scriptVersion: event.scriptVersion } : {}),
         ...(exceptions.length > 0 ? { exceptions } : {}),
         ...(errorInfo.length > 0 ? { errorInfo } : {}),
+        ...(platformReason ? { platformReason } : {}),
     };
+
+    // 平台瞬时错误：Workers Logs 用 warn，避免 error burst 触发 telemetry_error_burst
+    if (platformReason) {
+        return { log, intake: null };
+    }
 
     const uncaught = exceptions.length > 0 || outcome === 'exception';
     if (!uncaught) {
@@ -184,7 +251,12 @@ export function recordExceptionHub(
     for (const event of events) {
         const { log, intake } = analyzeExceptionEvent(event);
         if (log) {
-            console.error(JSON.stringify(log));
+            const line = JSON.stringify(log);
+            if (log.msg === PLATFORM_TRANSIENT_LOG_MSG) {
+                console.warn(line);
+            } else {
+                console.error(line);
+            }
             logged += 1;
         }
         if (intake) {
