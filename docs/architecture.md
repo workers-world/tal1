@@ -22,6 +22,7 @@ TAL1 is a **single tail consumer** for many producer Workers. It:
 | Path = first two segments | Enough for `/v1/chat`-style grouping; limits cardinality vs full URL |
 | Stack not in AE | blob 256-char limit; high-cardinality text breaks SLO GROUP BY |
 | Stack in Logs + Intake | System runtime signal for crash localization; Intake daily-deduped, no email flood |
+| Platform transients → warn, no Intake | CF container/DO capacity errors are retryable; `console.error` of `tal1_exception` trips `telemetry_error_burst` |
 | `errorInfo` not Intake | Caught logs already may go via business `reportOpsError` |
 | No app log parsing for SLO | Fragile; business SLO belongs in app code or structured metrics |
 | No `await` on `writeDataPoint` | Matches CF guidance; intake uses `waitUntil` |
