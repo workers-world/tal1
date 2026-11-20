@@ -7,8 +7,8 @@
         "dev": "wrangler dev",
         "deploy": "wrangler deploy",
         "check": "npm run lint && tsc --noEmit",
-        "test": "vitest run",
-        "test:coverage": "vitest run --coverage",
+        "test": "node ./node_modules/vitest/vitest.mjs run",
+        "test:coverage": "node ./node_modules/vitest/vitest.mjs run --coverage",
         "lint": "npx --yes @biomejs/biome@2.5.1 check src",
         "format": "npx --yes @biomejs/biome@2.5.1 format --write src"
     },
