@@ -1,6 +1,6 @@
 # 独立 workflow：复制到 Worker 根目录 .github/workflows/sync-default-branch.yml
 # 与 ci.yml 解耦，CI 失败不影响默认分支同步。说明见 docs/release-pr-ci.md
-# workers-world actions bundle: actions/v0.2.65（禁止 @master）
+# workers-world actions bundle: actions/v0.2.66（禁止 @master）
 # 勿设 contents: write——改默认分支走 PAT；GITHUB_TOKEN 应保持无权限。
 name: Sync default branch
 
@@ -16,12 +16,15 @@ concurrency:
 
 jobs:
   sync:
+    # 默认已是当前 push 分支、或 lock-bot：不起 runner
+    if: |
+      github.actor != 'github-actions[bot]' &&
+      github.event.repository.default_branch != github.ref_name
     # 显式收紧 GITHUB_TOKEN（勿 contents: write）；PATCH default_branch 走 PAT
     permissions: {}
-    uses: workers-world/worker-actions/.github/workflows/worker-sync-default-dev-branch.yml@actions/v0.2.65
-    secrets:
-      GHA_TOKEN: ${{ secrets.GHA_TOKEN }}
-      DEFAULT_BRANCH_BOT_PRIVATE_KEY: ${{ secrets.DEFAULT_BRANCH_BOT_PRIVATE_KEY }}
-      DEFAULT_BRANCH_BOT_APP_ID: ${{ secrets.DEFAULT_BRANCH_BOT_APP_ID }}
+    uses: workers-world/worker-actions/.github/workflows/worker-sync-default-dev-branch.yml@actions/v0.2.66
+    secrets: inherit
     with:
       push_branch: ${{ github.ref_name }}
+      # bot: app   # 可选：改默认分支走独立 App（须配 DEFAULT_BRANCH_BOT_APP_ID 变量 +
+      #              DEFAULT_BRANCH_BOT_PRIVATE_KEY Secret；App 仅安装到本仓），见 docs/github-app-token-migration.md §5

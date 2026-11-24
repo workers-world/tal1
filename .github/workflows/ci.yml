@@ -1,17 +1,28 @@
 # Release PR CI 模板（复制到 Worker 根目录 .github/workflows/ci.yml）
 # 说明见 docs/release-pr-ci.md；编排：worker-ci.yml
-# workers-world actions bundle: actions/v0.2.65（禁止 @master，见 docs/actions-releases.md）
+# workers-world actions bundle: actions/v0.2.66（禁止 @master，见 docs/actions-releases.md）
+# 若 caller 使用显式 secrets: 映射（非 inherit），请 pin @actions/v0.2.66+（tag 打出后）；v0.2.7 缺 workflow_call.secrets 声明
 # 另复制 templates/sync-default-branch.yml 为独立 workflow（勿并入本文件）
 name: CI
 
-# Release PR 模型：push dev_* → verify + 自动开 PR；PR → master 上跑 qodana，全绿 auto-merge。
-# 前置：Org Secret GHA_TOKEN（PAT repo）；caller 显式传递 secrets（见下方 secrets 块）
+# Release PR 模型：push dev_* → sync-lock + 自动开 Release PR（默认 ready）；
+# PR → master 上跑 verify（+ 可选 qodana / AI review）；全绿后 auto-merge（require_non_draft_pr 仍要求非 draft）。
+# 前置：Org Secret GHA_TOKEN（PAT repo）。caller 可 secrets: inherit，或显式映射 worker-ci workflow_call secrets：
+#   GHA_TOKEN, RELEASE_BOT_*, QODANA_TOKEN, AI_REVIEW_LLM_TOKEN, AI_REVIEW_LLM_*, NOTIFY_GHA_TOKEN
+# OCR（alibaba/open-code-review）已移除 — 见 docs/ai-review/README.md
 on:
   push:
     branches: ["dev_*"]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
   pull_request:
-    branches: ["master"]
+    # master：Release PR；dev_*：feature→destin 走 verify（correctness_on_builds 时 GHA 跳过 npm ci/check∥test）
+    branches: ["master", "dev_*"]
     types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -27,13 +38,9 @@ jobs:
       # nested worker-ci → qodana 需 actions: write（cache）；notify-blocked 需 actions/checks: read
       actions: write
       checks: read
-    uses: workers-world/worker-actions/.github/workflows/worker-ci.yml@actions/v0.2.65
-    secrets:
-      GHA_TOKEN: ${{ secrets.GHA_TOKEN }}
-      RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
-      RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
-      QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
-      NOTIFY_GHA_TOKEN: ${{ secrets.NOTIFY_GHA_TOKEN }}
+    uses: workers-world/worker-actions/.github/workflows/worker-ci.yml@actions/v0.2.66
+    secrets: inherit
     with:
       materialize_sdk: false
       sync_packages_lock: true
+      #              RELEASE_BOT_PRIVATE_KEY Secret；promote 嵌套链暂不受影响），见 docs/github-app-token-migration.md
