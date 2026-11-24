@@ -16,10 +16,10 @@
         "framework_sdk_worker": "npm:@workers-world/framework_sdk_worker@0.4.55"
     },
     "devDependencies": {
-        "@cloudflare/workers-types": "5.20261116.1",
+        "@cloudflare/workers-types": "5.20261123.1",
         "@vitest/coverage-v8": "^5.0.4",
         "typescript": "^5.9.3",
         "vitest": "^5.0.4",
-        "wrangler": "4.163.0"
+        "wrangler": "4.166.0"
     }
 }
