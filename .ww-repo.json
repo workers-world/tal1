@@ -1,0 +1,8 @@
+{
+  "type": "worker",
+  "deps": [
+    "framework_sdk_worker",
+    "sch1",
+    "worker-actions"
+  ]
+}
