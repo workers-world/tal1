@@ -35,3 +35,28 @@ service = "sch1"
 binding = "SCH_INTAKE_TOKEN"
 store_id = "2985ba254ea047f0b85466ef7347fdd7"
 secret_name = "SCH_INTAKE_TOKEN"
+
+# Workers Builds non-production: `npx wrangler preview` (CF previews_base_config).
+# Mirror production binding names/IDs so wrangler config gate passes; do not invent Preview-only resources.
+# Containers/DOs may not be provisioned in Preview yet; declarations still satisfy the config gate.
+
+[previews.placement]
+mode = "smart"
+
+[previews.observability]
+enabled = true
+
+[previews.observability.traces]
+enabled = true
+
+[previews.observability.issues]
+enabled = true
+
+[[previews.services]]
+binding = "SVC_SCH1"
+service = "sch1"
+
+[[previews.secrets_store_secrets]]
+binding = "SCH_INTAKE_TOKEN"
+store_id = "2985ba254ea047f0b85466ef7347fdd7"
+secret_name = "SCH_INTAKE_TOKEN"
