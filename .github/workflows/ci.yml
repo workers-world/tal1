@@ -38,7 +38,7 @@ jobs:
       # nested worker-ci → qodana 需 actions: write（cache）；notify-blocked 需 actions/checks: read
       actions: write
       checks: read
-    uses: workers-world/worker-actions/.github/workflows/worker-ci.yml@actions/v0.2.70
+    uses: workers-world/worker-actions/.github/workflows/worker-ci.yml@actions/v0.2.71
     secrets: inherit
     with:
       materialize_sdk: false
