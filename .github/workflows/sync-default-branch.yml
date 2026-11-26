@@ -22,7 +22,7 @@ jobs:
       github.event.repository.default_branch != github.ref_name
     # 显式收紧 GITHUB_TOKEN（勿 contents: write）；PATCH default_branch 走 PAT
     permissions: {}
-    uses: workers-world/worker-actions/.github/workflows/worker-sync-default-dev-branch.yml@actions/v0.2.70
+    uses: workers-world/worker-actions/.github/workflows/worker-sync-default-dev-branch.yml@actions/v0.2.71
     secrets: inherit
     with:
       push_branch: ${{ github.ref_name }}
